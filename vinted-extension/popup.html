@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Scalency Vinted Agent</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Scalency Vinted Agent</h1>
+
+    <div id="status-panel">
+      <div id="enrollment-status"></div>
+      <span id="status-text" style="display:none;"></span>
+
+      <div id="account-info" style="display: none;">
+        <p><strong>Last Poll:</strong> <span id="last-poll">-</span></p>
+        <p><strong>Tasks Processed:</strong> <span id="task-count">0</span></p>
+        <p><strong>Errors:</strong> <span id="error-count">0</span></p>
+      </div>
+
+      <div id="not-enrolled-info" style="display: none;">
+        <p>Not enrolled yet. Click below to link your Vinted account.</p>
+      </div>
+
+      <div id="error-info" style="display: none;">
+        <p><strong>Error:</strong> <span id="error-message"></span></p>
+      </div>
+    </div>
+
+    <div class="button-group">
+      <button id="enroll-btn" class="btn btn-primary" style="display: none;">
+        Enroll Now
+      </button>
+
+      <button id="refresh-btn" class="btn btn-secondary">
+        Refresh Status
+      </button>
+
+      <button id="open-dashboard-btn" class="btn btn-secondary">
+        Open Dashboard
+      </button>
+    </div>
+
+    <div id="logs" class="logs">
+      <h3>Recent Activity</h3>
+      <div id="logs-content"></div>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

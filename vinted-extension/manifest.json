@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "Scalency Vinted Agent",
+  "version": "1.0.0",
+  "description": "Automate Vinted listings: publish, message, bump",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://vinted.com/*",
+    "https://www.vinted.com/*",
+    "https://vinted.fr/*",
+    "https://www.vinted.fr/*",
+    "http://localhost:8000/*",
+    "https://api.scalency.app/*",
+    "https://*/*",
+    "http://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Scalency Vinted Agent"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://vinted.com/*",
+        "https://www.vinted.com/*",
+        "https://vinted.fr/*",
+        "https://www.vinted.fr/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_end"
+    }
+  ]
+}
