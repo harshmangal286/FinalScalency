@@ -908,7 +908,7 @@ async function executeLoginVinted(payload) {
     }
 
     // Verify we're on the actual login form page
-    const currentUrl = window.location.href;
+    currentUrl = window.location.href;
     console.log('[Content] URL after email link click:', currentUrl);
     if (currentUrl.includes('/member/signup/select_type')) {
       console.warn('[Content] ⚠️ Still on select_type page, waiting longer...');
