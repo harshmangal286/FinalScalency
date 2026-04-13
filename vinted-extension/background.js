@@ -154,7 +154,12 @@ async function poll() {
 
     // Execute each task
     for (const task of tasks) {
-      await executeTask(task, token);
+      console.log(`[Scalency] ⏳ Executing task: ${task.task_id} (${task.task_type})`);
+      try {
+        await executeTask(task, token);
+      } catch (taskError) {
+        console.error(`[Scalency] ✗ Task error: ${taskError.message}`);
+      }
     }
 
     // Update stats
@@ -208,19 +213,27 @@ async function executeTask(task, token) {
     // For login tasks, create a Vinted tab if none exists
     if (tabs.length === 0) {
       if (task.task_type === 'login_vinted') {
-        console.log('[Scalency] No Vinted tab found - creating one for login task');
+        console.log('[Scalency] 📂 No Vinted tab found - attempting to create one for login task');
         try {
+          console.log('[Scalency] 🌐 Creating new tab at: https://www.vinted.com/member/signup/select_type');
           const newTab = await chrome.tabs.create({
             url: 'https://www.vinted.com/member/signup/select_type',
             active: true
           });
-          console.log(`[Scalency] Created new tab ${newTab.id}`);
+          console.log(`[Scalency] ✅ Successfully created tab ${newTab.id} with URL: ${newTab.url}`);
           tabs = [newTab];
 
           // Wait a bit for page to load
+          console.log('[Scalency] ⏳ Waiting 2 seconds for page to load...');
           await new Promise(resolve => setTimeout(resolve, 2000));
+          console.log('[Scalency] ✅ Page load wait complete');
         } catch (createError) {
-          console.error('[Scalency] Failed to create Vinted tab:', createError.message);
+          console.error('[Scalency] ❌ FAILED to create Vinted tab:', createError);
+          console.error('[Scalency] Error details:', {
+            name: createError.name,
+            message: createError.message,
+            stack: createError.stack
+          });
           await reportTaskResult(task.task_id, {
             status: 'failed',
             error: `Failed to create Vinted tab: ${createError.message}`
@@ -228,7 +241,7 @@ async function executeTask(task, token) {
           return;
         }
       } else {
-        console.log('[Scalency] No active Vinted tab found');
+        console.log('[Scalency] ❌ No active Vinted tab found (non-login task)');
         // Report failure - no tab available
         await reportTaskResult(task.task_id, {
           status: 'failed',
@@ -239,24 +252,27 @@ async function executeTask(task, token) {
     }
 
     const tab = tabs[0];
-    console.log(`[Scalency] Sending task to tab ${tab.id}`);
-    console.log(`[Scalency] Tab URL: ${tab.url}`);
-    console.log(`[Scalency] Tab status: ${tab.status}`);
+    console.log(`[Scalency] 📊 Tab info:`);
+    console.log(`[Scalency]   ID: ${tab.id}`);
+    console.log(`[Scalency]   URL: ${tab.url}`);
+    console.log(`[Scalency]   Status: ${tab.status}`);
+    console.log(`[Scalency]   Active: ${tab.active}`);
 
     // Ensure content script is injected
     if (tab.status !== 'complete') {
-      console.warn('[Scalency] Tab not fully loaded');
+      console.warn('[Scalency] ⚠️ Tab not fully loaded (status: ' + tab.status + ')');
     }
 
     // Try to inject content script if needed
     try {
+      console.log('[Scalency] 💉 Injecting content script...');
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         files: ['content.js']
       });
-      console.log('[Scalency] Content script injected/verified');
+      console.log('[Scalency] ✅ Content script injected/verified');
     } catch (injectError) {
-      console.error('[Scalency] Failed to inject content script:', injectError.message);
+      console.error('[Scalency] ❌ Failed to inject content script:', injectError.message);
     }
 
     // Send task to content script with timeout
@@ -264,6 +280,9 @@ async function executeTask(task, token) {
     try {
       // Create a timeout promise
       const timeoutMs = CONFIG.TASK.TIMEOUT_DEFAULT_MS;
+      console.log(`[Scalency] 📨 Sending task message to tab ${tab.id} (timeout: ${timeoutMs}ms)`);
+      console.log(`[Scalency] Task payload:`, task);
+
       const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error(`Task timeout after ${timeoutMs}ms`)), timeoutMs)
       );
@@ -276,7 +295,7 @@ async function executeTask(task, token) {
         }),
         timeoutPromise,
       ]);
-      console.log(`[Scalency] Content script response:`, result);
+      console.log(`[Scalency] ✅ Content script response:`, result);
 
       // Check if response indicates an error
       if (result.status === 'error') {
@@ -288,7 +307,7 @@ async function executeTask(task, token) {
         result = result.result;
       }
     } catch (messageError) {
-      console.error(`[Scalency] Content script error:`, messageError.message);
+      console.error(`[Scalency] ❌ Content script error:`, messageError.message);
       // Content script not loaded, error sending message, or timeout
       await reportTaskResult(task.task_id, {
         status: 'failed',
