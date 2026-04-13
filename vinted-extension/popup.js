@@ -187,3 +187,4 @@ chrome.runtime.sendMessage({ type: 'GET_STATUS' }, (response) => {
     console.log('Background status:', response);
   }
 });
+

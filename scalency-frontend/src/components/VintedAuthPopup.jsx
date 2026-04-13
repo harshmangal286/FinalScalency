@@ -57,7 +57,7 @@ export default function VintedAuthPopup({ onEnrollmentSuccess, userId }) {
       localStorage.setItem('vinted_profile_id', data.profile_id);
       localStorage.setItem('vinted_account_name', data.account_name);
 
-      // Call parent callback if provided
+      // Notify parent component to switch to this profile
       if (onEnrollmentSuccess) {
         onEnrollmentSuccess({
           enrollment_token: data.enrollment_token,
@@ -66,7 +66,13 @@ export default function VintedAuthPopup({ onEnrollmentSuccess, userId }) {
         });
       }
 
-      // Keep modal open for user to copy token or see that extension can pick it up
+      // Reload profiles after enrollment so new profile appears in dropdown
+      if (window.location.pathname.includes('localhost') || window.location.pathname.includes('3000')) {
+        // Dispatch a custom event so VintedTasks component reloads profiles
+        window.dispatchEvent(new CustomEvent('vinted-profile-enrolled', {
+          detail: { profile_id: data.profile_id, account_name: data.account_name }
+        }));
+      }
     } catch (err) {
       console.error('Enrollment error:', err);
       setError(err.message);

@@ -24,6 +24,30 @@ export default function VintedTasks() {
     loadProfiles();
   }, []);
 
+  // Log profile changes for debugging
+  useEffect(() => {
+    console.log('[VintedTasks] Profiles loaded:', profiles);
+    console.log('[VintedTasks] Selected profile:', selectedProfileId);
+  }, [profiles, selectedProfileId]);
+
+  // Listen for vinted profile enrollment
+  useEffect(() => {
+    const handleEnrollment = (event) => {
+      console.log('[VintedTasks] Enrollment event:', event.detail);
+      const { profile_id } = event.detail;
+
+      // Auto-select the newly enrolled profile
+      setSelectedProfileId(profile_id);
+      console.log('[VintedTasks] Auto-selected newly enrolled profile:', profile_id);
+
+      // Reload profiles to refresh the list
+      setTimeout(() => loadProfiles(), 500);
+    };
+
+    window.addEventListener('vinted-profile-enrolled', handleEnrollment);
+    return () => window.removeEventListener('vinted-profile-enrolled', handleEnrollment);
+  }, []);
+
   // Load tasks when profile is selected
   useEffect(() => {
     if (selectedProfileId) {

@@ -124,7 +124,9 @@ async function poll() {
     }
 
     console.log('[Scalency] Polling for tasks...');
+    console.log(`[Scalency] Token: ${token.substring(0, 16)}...`);
     const pollUrl = CONFIG.getFullUrl(CONFIG.API_ENDPOINTS.TASKS) + `?enrollment_token=${token}`;
+    console.log(`[Scalency] Poll URL: ${pollUrl}`);
     const response = await fetch(pollUrl);
 
     if (response.status === 401) {
@@ -143,6 +145,9 @@ async function poll() {
     const tasks = data.tasks || [];
 
     console.log(`[Scalency] Got ${tasks.length} tasks`);
+    if (tasks.length > 0) {
+      console.log('[Scalency] Tasks:', JSON.stringify(tasks, null, 2));
+    }
 
     // Reset error count on successful poll
     errorCount = 0;
