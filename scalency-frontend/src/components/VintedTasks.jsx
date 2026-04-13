@@ -206,16 +206,22 @@ export default function VintedTasks() {
         <p className="text-gray-600">Create and manage Vinted listing automation</p>
       </div>
 
-      {/* Profile Selection */}
+      {/*Profile Selection */}
       <div className="border rounded-lg p-6 bg-white">
         <h3 className="text-lg font-semibold mb-4">Select Profile</h3>
 
         {loading && profiles.length === 0 ? (
           <p className="text-gray-600">Loading profiles...</p>
         ) : profiles.length === 0 ? (
-          <p className="text-gray-600">
-            No profiles enrolled. Install the Vinted extension and enroll first.
-          </p>
+          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800">
+            <p className="font-medium mb-2">⚠️ No Vinted profiles enrolled</p>
+            <p className="text-sm mb-3">
+              You need to enroll a Vinted account first. Click the "🔐 Enroll Vinted" button at the top-right to link your account.
+            </p>
+            <p className="text-xs text-yellow-700">
+              After enrolling, refresh the page and select your profile here to create tasks.
+            </p>
+          </div>
         ) : (
           <select
             value={selectedProfileId}
