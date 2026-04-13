@@ -900,9 +900,19 @@ async function executeLoginVinted(payload) {
     if (emailLink) {
       console.log('[Content] Found and clicking "log in with email" link');
       emailLink.click();
-      await delay(1500); // Wait for form to appear
+      // IMPORTANT: Wait longer for form to appear after clicking
+      await delay(2500);
     } else {
       console.warn('[Content] Email link not found, form might already be visible');
+      await delay(1000);
+    }
+
+    // Verify we're on the actual login form page
+    const currentUrl = window.location.href;
+    console.log('[Content] URL after email link click:', currentUrl);
+    if (currentUrl.includes('/member/signup/select_type')) {
+      console.warn('[Content] ⚠️ Still on select_type page, waiting longer...');
+      await delay(2000);
     }
 
     // Find and fill username field
@@ -974,17 +984,35 @@ async function executeLoginVinted(payload) {
     // Wait for page to redirect (login processing)
     await delay(5000);
 
-    // Check if we're on a 2FA verification page
-    const is2FAPage = document.textContent.includes('Verify your activity') ||
-                      document.textContent.includes('verify your activity') ||
-                      document.querySelector('input[placeholder*="code" i]') !== null ||
-                      document.querySelector('input[placeholder*="digit" i]') !== null ||
-                      document.querySelector('input[inputmode="numeric"]') !== null;
+    // Check if we're on a 2FA verification page - with detailed logging
+    console.log('[Content] ===== CHECKING FOR 2FA PAGE =====');
+    console.log('[Content] Page title:', document.title);
+    console.log('[Content] Current URL:', window.location.href);
 
-    console.log(`[Content] Checking for 2FA page... is2FAPage=${is2FAPage}`);
+    const pageText = document.textContent ? document.textContent.toLowerCase() : '';
+    console.log('[Content] Page text includes "verify":', pageText.includes('verify'));
+    console.log('[Content] Page text includes "code":', pageText.includes('code'));
+
+    // Check multiple detection methods
+    const check1 = pageText.includes('verify your activity');
+    const check2 = document.querySelector('input[placeholder*="code" i]') !== null;
+    const check3 = document.querySelector('input[placeholder*="digit" i]') !== null;
+    const check4 = document.querySelector('input[inputmode="numeric"]') !== null;
+    const check5 = pageText.includes('enter code');
+
+    console.log('[Content] 2FA detection checks:');
+    console.log(`  - "verify your activity" text: ${check1}`);
+    console.log(`  - Code placeholder input: ${check2}`);
+    console.log(`  - Digit placeholder input: ${check3}`);
+    console.log(`  - Numeric inputmode: ${check4}`);
+    console.log(`  - "enter code" text: ${check5}`);
+
+    const is2FAPage = check1 || check2 || check3 || check4 || check5;
+
+    console.log(`[Content] Overall 2FA detected: ${is2FAPage}`);
 
     if (is2FAPage) {
-      console.log('[Content] 🔐 2FA verification page DETECTED');
+      console.log('[Content] 🔐 2FA VERIFICATION PAGE DETECTED!');
       const verificationCode = await wait2FACode();
 
       if (!verificationCode) {
@@ -997,6 +1025,8 @@ async function executeLoginVinted(payload) {
       // Wait for 2FA to complete and redirect
       console.log('[Content] Waiting for 2FA completion...');
       await delay(3000);
+    } else {
+      console.log('[Content] No 2FA page detected, checking if login succeeded...');
     }
 
     // Check if login was successful
