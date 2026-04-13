@@ -976,22 +976,27 @@ async function executeLoginVinted(payload) {
 
     // Check if we're on a 2FA verification page
     const is2FAPage = document.textContent.includes('Verify your activity') ||
+                      document.textContent.includes('verify your activity') ||
                       document.querySelector('input[placeholder*="code" i]') !== null ||
-                      document.querySelector('input[placeholder*="digit" i]') !== null;
+                      document.querySelector('input[placeholder*="digit" i]') !== null ||
+                      document.querySelector('input[inputmode="numeric"]') !== null;
+
+    console.log(`[Content] Checking for 2FA page... is2FAPage=${is2FAPage}`);
 
     if (is2FAPage) {
-      console.log('[Content] 2FA verification page detected');
+      console.log('[Content] 🔐 2FA verification page DETECTED');
       const verificationCode = await wait2FACode();
 
       if (!verificationCode) {
         throw new Error('2FA verification timed out - no code received from user');
       }
 
-      console.log('[Content] Received verification code, filling 2FA form...');
+      console.log('[Content] ✓ Received verification code from frontend, filling form...');
       await fill2FAVerification(verificationCode);
 
-      // Wait for 2FA to complete
-      await delay(5000);
+      // Wait for 2FA to complete and redirect
+      console.log('[Content] Waiting for 2FA completion...');
+      await delay(3000);
     }
 
     // Check if login was successful
@@ -1055,20 +1060,38 @@ async function wait2FACode(timeoutMs = 300000) {
  */
 async function fill2FAVerification(code) {
   try {
-    // Find the code input field
-    let codeInput = document.querySelector('input[placeholder*="code" i]') ||
-                    document.querySelector('input[placeholder*="digit" i]') ||
-                    document.querySelector('input[type="text"][maxlength="4"]') ||
-                    document.querySelector('input[inputmode="numeric"]');
+    console.log('[Content] Starting 2FA form fill with code:', code);
 
-    // Try searching for all inputs and finding the one related to verification
+    // Find the code input field - try multiple strategies
+    let codeInput = null;
+
+    // Strategy 1: Search by placeholder
+    codeInput = document.querySelector('input[placeholder*="code" i]') ||
+                document.querySelector('input[placeholder*="digit" i]') ||
+                document.querySelector('input[placeholder*="enter" i]');
+
+    // Strategy 2: Search by type and maxlength
+    if (!codeInput) {
+      codeInput = document.querySelector('input[type="text"][maxlength="4"]') ||
+                  document.querySelector('input[type="number"][maxlength="4"]');
+    }
+
+    // Strategy 3: Search by inputmode
+    if (!codeInput) {
+      codeInput = document.querySelector('input[inputmode="numeric"]');
+    }
+
+    // Strategy 4: Search by aria-label
     if (!codeInput) {
       const allInputs = document.querySelectorAll('input[type="text"], input[type="number"]');
       for (const input of allInputs) {
         const placeholder = input.placeholder?.toLowerCase() || '';
         const ariaLabel = input.getAttribute('aria-label')?.toLowerCase() || '';
+        const ariaPlaceholder = input.getAttribute('aria-placeholder')?.toLowerCase() || '';
+
         if (placeholder.includes('code') || placeholder.includes('digit') ||
-            ariaLabel.includes('code') || ariaLabel.includes('digit')) {
+            ariaLabel.includes('code') || ariaLabel.includes('digit') ||
+            ariaPlaceholder.includes('code') || ariaPlaceholder.includes('digit')) {
           codeInput = input;
           break;
         }
@@ -1076,29 +1099,37 @@ async function fill2FAVerification(code) {
     }
 
     if (!codeInput) {
+      console.error('[Content] ✗ 2FA code input field not found');
       throw new Error('2FA code input field not found');
     }
 
-    console.log('[Content] ✓ Found 2FA code input field, filling...');
+    console.log('[Content] ✓ Found 2FA code input, filling with code...');
     codeInput.value = code;
     codeInput.focus();
+
+    // Trigger all necessary events for React/Vue to register the change
     codeInput.dispatchEvent(new Event('input', { bubbles: true }));
     codeInput.dispatchEvent(new Event('change', { bubbles: true }));
-    await delay(500);
+    codeInput.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
 
-    // Optionally check "Remember this device" checkbox if it exists
-    const rememberCheckbox = document.querySelector('input[type="checkbox"][aria-label*="remember" i]') ||
-                            document.querySelector('input[type="checkbox"][data-testid*="remember" i]');
+    await delay(300);
+
+    // Try to check "Remember this device" checkbox
+    let rememberCheckbox = document.querySelector('input[type="checkbox"]');
 
     if (rememberCheckbox && !rememberCheckbox.checked) {
-      console.log('[Content] Checking "Remember this device" checkbox...');
+      console.log('[Content] ✓ Checking "Remember this device" checkbox...');
       rememberCheckbox.click();
       await delay(300);
     }
 
-    // Find and click Verify button
-    let verifyButton = document.querySelector('button[data-testid*="verify" i]');
+    // Find and click Verify button - try multiple strategies
+    let verifyButton = null;
 
+    // Strategy 1: By data-testid
+    verifyButton = document.querySelector('button[data-testid*="verify" i]');
+
+    // Strategy 2: By text content
     if (!verifyButton) {
       const allButtons = document.querySelectorAll('button');
       for (const btn of allButtons) {
@@ -1111,11 +1142,15 @@ async function fill2FAVerification(code) {
     }
 
     if (!verifyButton) {
+      console.error('[Content] ✗ Verify button not found');
       throw new Error('Verify button not found');
     }
 
     console.log('[Content] ✓ Found verify button, clicking...');
+    verifyButton.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    await delay(200);
     verifyButton.click();
+
     console.log('[Content] ✓ 2FA verification submitted');
 
   } catch (error) {

@@ -166,22 +166,27 @@ export default function VintedTasks() {
       // For login tasks, monitor for 2FA requirement
       if (activeTaskType === 'login_vinted') {
         setLoginInProgress(true);
+        console.log('[VintedTasks] Waiting for 2FA requirement from extension...');
+
         await new Promise((resolve) => {
           const checkInterval = setInterval(() => {
             const flag = sessionStorage.getItem('scalency_2fa_waiting');
+            console.log('[VintedTasks] 2FA flag check:', flag);
             if (flag) {
+              console.log('[VintedTasks] 2FA detected!');
               clearInterval(checkInterval);
               setNeeds2FA(true);
               resolve();
             }
-          }, 500);
+          }, 200); // Check more frequently
 
-          // Timeout after 30 seconds
+          // Timeout after 60 seconds (give extension time to fill login)
           setTimeout(() => {
             clearInterval(checkInterval);
+            console.log('[VintedTasks] 2FA monitoring timeout - login may have completed without 2FA');
             setLoginInProgress(false);
             resolve();
-          }, 30000);
+          }, 60000);
         });
       } else {
         setSuccess('Task created successfully!');
@@ -335,29 +340,63 @@ export default function VintedTasks() {
 
                   {/* 2FA Verification Code Input */}
                   {needs2FA && (
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                      <label className="block text-sm font-medium mb-2 text-yellow-900">
-                        2FA Verification Code
+                    <div className="bg-yellow-50 border-2 border-yellow-300 rounded-lg p-5">
+                      <div className="bg-yellow-100 text-yellow-900 px-4 py-3 rounded mb-4">
+                        <p className="text-sm font-semibold">🔐 Verify Your Activity</p>
+                        <p className="text-xs mt-1">A 4-digit code has been sent to your phone.</p>
+                      </div>
+
+                      <label className="block text-sm font-medium mb-3 text-yellow-900">
+                        Enter the 4-digit verification code:
                       </label>
-                      <p className="text-xs text-yellow-700 mb-3">
-                        A verification code has been sent to your phone. Enter it below:
-                      </p>
-                      <input
-                        type="text"
-                        value={twoFACode}
-                        onChange={(e) => {
-                          const code = e.target.value.replace(/\D/g, '').slice(0, 4);
-                          setTwoFACode(code);
-                          if (code.length === 4) {
-                            sessionStorage.setItem('scalency_2fa_code', code);
-                          }
-                        }}
-                        placeholder="0000"
-                        maxLength="4"
-                        className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 text-center text-2xl tracking-widest font-mono"
-                      />
-                      <p className="text-xs text-yellow-600 mt-2">
-                        {twoFACode.length === 4 ? '✓ Code sent to extension' : `${4 - twoFACode.length} more digits...`}
+
+                      <div className="relative mb-4">
+                        <input
+                          type="text"
+                          value={twoFACode}
+                          onChange={(e) => {
+                            const code = e.target.value.replace(/\D/g, '').slice(0, 4);
+                            setTwoFACode(code);
+                            if (code.length === 4) {
+                              console.log('[VintedTasks] 4-digit code complete, sending to extension');
+                              sessionStorage.setItem('scalency_2fa_code', code);
+                            }
+                          }}
+                          placeholder="• • • •"
+                          maxLength="4"
+                          inputMode="numeric"
+                          autoComplete="off"
+                          className="w-full px-4 py-3 border-2 border-yellow-300 rounded-lg focus:outline-none focus:border-yellow-500 text-center text-3xl tracking-[0.5rem] font-mono font-bold"
+                        />
+                        <div className="absolute right-3 top-3">
+                          {twoFACode.length === 4 ? (
+                            <span className="text-2xl">✓</span>
+                          ) : (
+                            <span className="text-lg text-yellow-600">{twoFACode.length}/4</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {twoFACode.length === 4 && (
+                        <div className="flex items-center gap-2 mb-4 p-3 bg-green-50 border border-green-200 rounded">
+                          <span className="text-lg">✓</span>
+                          <span className="text-sm text-green-700">Code detected. Extension is verifying...</span>
+                        </div>
+                      )}
+
+                      <label className="flex items-center gap-2 text-sm text-yellow-900 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          defaultChecked
+                          className="w-4 h-4 rounded"
+                          title="Extension will check 'Remember this device' on Vinted"
+                        />
+                        Remember this device
+                        <span className="text-xs text-yellow-700">(extension will check this for you)</span>
+                      </label>
+
+                      <p className="text-xs text-yellow-600 mt-3 text-center">
+                        Waiting for extension to complete verification...
                       </p>
                     </div>
                   )}
