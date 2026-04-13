@@ -15,6 +15,21 @@ console.log('[Scalency] Content script initializing...');
 window.addEventListener('load', async () => {
   console.log('[Content] Page fully loaded - checking for pending tasks in sessionStorage...');
 
+  // Check for pending login task
+  const pendingLoginJson = sessionStorage.getItem('scalency_pending_login');
+  if (pendingLoginJson) {
+    console.log('[Content] ✓ Found pending LOGIN task in sessionStorage, executing now...');
+    sessionStorage.removeItem('scalency_pending_login');
+
+    try {
+      const payload = JSON.parse(pendingLoginJson);
+      console.log('[Content] Executing pending login_vinted task after navigation...');
+      await executeLoginVinted(payload);
+    } catch (err) {
+      console.error('[Content] ⚠ Failed to execute pending login task:', err.message);
+    }
+  }
+
   const pendingTaskJson = sessionStorage.getItem('scalency_pending_task');
   if (pendingTaskJson) {
     console.log('[Content] ✓ Found pending task in sessionStorage, executing now...');
@@ -108,6 +123,8 @@ console.log('[Scalency] Content script loaded');
  */
 async function executeTask(task) {
   switch (task.task_type) {
+    case 'login_vinted':
+      return await executeLoginVinted(task.payload);
     case 'send_message':
       return await executeSendMessage(task.payload);
     case 'publish_listing':
@@ -818,6 +835,292 @@ async function uploadImages(imageUrls, fileInputSelector) {
     console.error('[Content] Image upload error:', err.message);
     // Don't throw - image upload is not critical for publishing
     console.warn('[Content] ⚠ Image upload failed, but continuing with form submission');
+  }
+}
+
+/**
+ * TASK: login_vinted
+ * Payload: { username, password }
+ *
+ * Logs into Vinted by filling the login form directly.
+ * Handles both initial login and 2FA verification if required.
+ */
+async function executeLoginVinted(payload) {
+  const { username, password } = payload;
+
+  if (!username || !password) {
+    throw new Error('Missing required fields: username, password');
+  }
+
+  console.log('[Content] Executing Vinted login...');
+
+  try {
+    // Check if we're on the login page
+    const currentUrl = window.location.href;
+    console.log('[Content] Current URL:', currentUrl);
+
+    // If not on login page, save task to sessionStorage and navigate
+    if (!currentUrl.includes('/member/signup') && !currentUrl.includes('/member/login')) {
+      console.log('[Content] Not on login page, saving task and navigating...');
+
+      // Save the login task to sessionStorage so it persists after navigation
+      sessionStorage.setItem('scalency_pending_login', JSON.stringify({
+        username: username,
+        password: password
+      }));
+
+      // Navigate to login page
+      window.location.href = 'https://www.vinted.com/member/signup/select_type';
+
+      // Script will be paused here during page navigation
+      await delay(3000);
+      return; // This won't actually execute since page is navigating
+    }
+
+    console.log('[Content] Already on login page, proceeding with form fill...');
+
+    // Wait for page to fully render
+    await delay(1500);
+
+    // Click "Or log in with email" link to reveal the form
+    let emailLink = document.querySelector('[data-testid="auth-select-type--login-email"]');
+
+    if (!emailLink) {
+      // Try to find by text content - look for clickable element with "email"
+      const allElements = document.querySelectorAll('span, a, button, div[role="button"]');
+      for (const el of allElements) {
+        const text = el.textContent.toLowerCase();
+        if (text.includes('email') && text.length < 100) {
+          emailLink = el;
+          break;
+        }
+      }
+    }
+
+    if (emailLink) {
+      console.log('[Content] Found and clicking "log in with email" link');
+      emailLink.click();
+      await delay(1500); // Wait for form to appear
+    } else {
+      console.warn('[Content] Email link not found, form might already be visible');
+    }
+
+    // Find and fill username field
+    let usernameInput = document.querySelector('input[id="username"], input[name="username"]');
+
+    if (!usernameInput) {
+      const allInputs = document.querySelectorAll('input[type="text"]');
+      for (const input of allInputs) {
+        if (input.placeholder && input.placeholder.includes('Username')) {
+          usernameInput = input;
+          break;
+        }
+      }
+    }
+
+    if (!usernameInput) {
+      throw new Error('Username field not found');
+    }
+
+    console.log('[Content] ✓ Found username field, filling with:', username);
+    usernameInput.value = username;
+    usernameInput.focus();
+    usernameInput.dispatchEvent(new Event('input', { bubbles: true }));
+    usernameInput.dispatchEvent(new Event('change', { bubbles: true }));
+    await delay(500);
+
+    // Find and fill password field
+    let passwordInput = document.querySelector('input[id="password"], input[name="password"]');
+
+    if (!passwordInput) {
+      const allInputs = document.querySelectorAll('input[type="password"]');
+      if (allInputs.length > 0) {
+        passwordInput = allInputs[0];
+      }
+    }
+
+    if (!passwordInput) {
+      throw new Error('Password field not found');
+    }
+
+    console.log('[Content] ✓ Found password field, filling...');
+    passwordInput.value = password;
+    passwordInput.focus();
+    passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
+    passwordInput.dispatchEvent(new Event('change', { bubbles: true }));
+    await delay(500);
+
+    // Find and click submit button
+    let submitButton = document.querySelector('button[type="submit"]');
+
+    if (!submitButton) {
+      const allButtons = document.querySelectorAll('button');
+      for (const btn of allButtons) {
+        const text = btn.textContent.toLowerCase();
+        if (text.includes('continue') || text.includes('log in')) {
+          submitButton = btn;
+          break;
+        }
+      }
+    }
+
+    if (!submitButton) {
+      throw new Error('Submit button not found');
+    }
+
+    console.log('[Content] ✓ Found submit button, clicking...');
+    submitButton.click();
+
+    // Wait for page to redirect (login processing)
+    await delay(5000);
+
+    // Check if we're on a 2FA verification page
+    const is2FAPage = document.textContent.includes('Verify your activity') ||
+                      document.querySelector('input[placeholder*="code" i]') !== null ||
+                      document.querySelector('input[placeholder*="digit" i]') !== null;
+
+    if (is2FAPage) {
+      console.log('[Content] 2FA verification page detected');
+      const verificationCode = await wait2FACode();
+
+      if (!verificationCode) {
+        throw new Error('2FA verification timed out - no code received from user');
+      }
+
+      console.log('[Content] Received verification code, filling 2FA form...');
+      await fill2FAVerification(verificationCode);
+
+      // Wait for 2FA to complete
+      await delay(5000);
+    }
+
+    // Check if login was successful
+    const isBrowsingPage = !window.location.href.includes('/member/');
+    const hasError = document.querySelector('[class*="error"]') !== null;
+
+    if (isBrowsingPage && !hasError) {
+      console.log('[Content] ✓ Login successful! Redirected to:', window.location.href);
+      return {
+        status: 'success',
+        result: {
+          message: 'Login successful',
+          url: window.location.href
+        }
+      };
+    } else {
+      throw new Error(`Login failed or still on login page. Current URL: ${window.location.href}`);
+    }
+  } catch (error) {
+    console.error('[Content] Login error:', error.message);
+    return {
+      status: 'failed',
+      error: error.message
+    };
+  }
+}
+
+/**
+ * Wait for user to provide 2FA verification code via sessionStorage
+ * Sets a flag so frontend knows 2FA is required
+ * Times out after 5 minutes
+ */
+async function wait2FACode(timeoutMs = 300000) {
+  console.log('[Content] Waiting for 2FA code from user (timeout: 5 minutes)...');
+
+  // Signal to frontend that 2FA is required
+  sessionStorage.setItem('scalency_2fa_waiting', 'true');
+  console.log('[Content] Set 2FA flag for frontend');
+
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < timeoutMs) {
+    const code = sessionStorage.getItem('scalency_2fa_code');
+    if (code) {
+      console.log('[Content] ✓ Received 2FA code from frontend');
+      sessionStorage.removeItem('scalency_2fa_code'); // Clean up
+      sessionStorage.removeItem('scalency_2fa_waiting'); // Clean up flag
+      return code;
+    }
+
+    await delay(500);
+  }
+
+  console.warn('[Content] 2FA code timeout - user did not provide code in time');
+  sessionStorage.removeItem('scalency_2fa_waiting'); // Clean up flag
+  return null;
+}
+
+/**
+ * Fill and submit 2FA verification form
+ */
+async function fill2FAVerification(code) {
+  try {
+    // Find the code input field
+    let codeInput = document.querySelector('input[placeholder*="code" i]') ||
+                    document.querySelector('input[placeholder*="digit" i]') ||
+                    document.querySelector('input[type="text"][maxlength="4"]') ||
+                    document.querySelector('input[inputmode="numeric"]');
+
+    // Try searching for all inputs and finding the one related to verification
+    if (!codeInput) {
+      const allInputs = document.querySelectorAll('input[type="text"], input[type="number"]');
+      for (const input of allInputs) {
+        const placeholder = input.placeholder?.toLowerCase() || '';
+        const ariaLabel = input.getAttribute('aria-label')?.toLowerCase() || '';
+        if (placeholder.includes('code') || placeholder.includes('digit') ||
+            ariaLabel.includes('code') || ariaLabel.includes('digit')) {
+          codeInput = input;
+          break;
+        }
+      }
+    }
+
+    if (!codeInput) {
+      throw new Error('2FA code input field not found');
+    }
+
+    console.log('[Content] ✓ Found 2FA code input field, filling...');
+    codeInput.value = code;
+    codeInput.focus();
+    codeInput.dispatchEvent(new Event('input', { bubbles: true }));
+    codeInput.dispatchEvent(new Event('change', { bubbles: true }));
+    await delay(500);
+
+    // Optionally check "Remember this device" checkbox if it exists
+    const rememberCheckbox = document.querySelector('input[type="checkbox"][aria-label*="remember" i]') ||
+                            document.querySelector('input[type="checkbox"][data-testid*="remember" i]');
+
+    if (rememberCheckbox && !rememberCheckbox.checked) {
+      console.log('[Content] Checking "Remember this device" checkbox...');
+      rememberCheckbox.click();
+      await delay(300);
+    }
+
+    // Find and click Verify button
+    let verifyButton = document.querySelector('button[data-testid*="verify" i]');
+
+    if (!verifyButton) {
+      const allButtons = document.querySelectorAll('button');
+      for (const btn of allButtons) {
+        const text = btn.textContent.toLowerCase();
+        if (text.includes('verify') || text.includes('confirm')) {
+          verifyButton = btn;
+          break;
+        }
+      }
+    }
+
+    if (!verifyButton) {
+      throw new Error('Verify button not found');
+    }
+
+    console.log('[Content] ✓ Found verify button, clicking...');
+    verifyButton.click();
+    console.log('[Content] ✓ 2FA verification submitted');
+
+  } catch (error) {
+    console.error('[Content] Error during 2FA verification:', error.message);
+    throw error;
   }
 }
 

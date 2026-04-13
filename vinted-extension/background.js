@@ -194,20 +194,43 @@ async function executeTask(task, token) {
 
   try {
     // Find an active vinted.com tab
-    const tabs = await chrome.tabs.query({
+    let tabs = await chrome.tabs.query({
       url: ['https://vinted.com/*', 'https://www.vinted.com/*', 'https://vinted.fr/*', 'https://www.vinted.fr/*'],
     });
 
     console.log(`[Scalency] Found ${tabs.length} Vinted tabs`);
 
+    // For login tasks, create a Vinted tab if none exists
     if (tabs.length === 0) {
-      console.log('[Scalency] No active Vinted tab found');
-      // Report failure - no tab available
-      await reportTaskResult(task.task_id, {
-        status: 'failed',
-        error: 'No Vinted tab open'
-      }, token);
-      return;
+      if (task.task_type === 'login_vinted') {
+        console.log('[Scalency] No Vinted tab found - creating one for login task');
+        try {
+          const newTab = await chrome.tabs.create({
+            url: 'https://www.vinted.com/member/signup/select_type',
+            active: true
+          });
+          console.log(`[Scalency] Created new tab ${newTab.id}`);
+          tabs = [newTab];
+
+          // Wait a bit for page to load
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        } catch (createError) {
+          console.error('[Scalency] Failed to create Vinted tab:', createError.message);
+          await reportTaskResult(task.task_id, {
+            status: 'failed',
+            error: `Failed to create Vinted tab: ${createError.message}`
+          }, token);
+          return;
+        }
+      } else {
+        console.log('[Scalency] No active Vinted tab found');
+        // Report failure - no tab available
+        await reportTaskResult(task.task_id, {
+          status: 'failed',
+          error: 'No Vinted tab open'
+        }, token);
+        return;
+      }
     }
 
     const tab = tabs[0];

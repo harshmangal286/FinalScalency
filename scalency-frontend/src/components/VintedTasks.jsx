@@ -15,6 +15,9 @@ export default function VintedTasks() {
   });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [loginInProgress, setLoginInProgress] = useState(false);
+  const [needs2FA, setNeeds2FA] = useState(false);
+  const [twoFACode, setTwoFACode] = useState('');
 
   // Load profiles on mount
   useEffect(() => {
@@ -27,6 +30,31 @@ export default function VintedTasks() {
       loadTasks();
     }
   }, [selectedProfileId]);
+
+  // Cleanup login state when task completes
+  useEffect(() => {
+    if (success && activeTaskType === 'login_vinted') {
+      const timeout = setTimeout(() => {
+        setLoginInProgress(false);
+        setNeeds2FA(false);
+        setTwoFACode('');
+        sessionStorage.removeItem('scalency_2fa_code');
+        sessionStorage.removeItem('scalency_2fa_waiting');
+      }, 2000);
+      return () => clearTimeout(timeout);
+    }
+  }, [success, activeTaskType]);
+
+  // Reset 2FA state when task type changes
+  useEffect(() => {
+    if (activeTaskType !== 'login_vinted') {
+      setLoginInProgress(false);
+      setNeeds2FA(false);
+      setTwoFACode('');
+      sessionStorage.removeItem('scalency_2fa_code');
+      sessionStorage.removeItem('scalency_2fa_waiting');
+    }
+  }, [activeTaskType]);
 
   const loadProfiles = async () => {
     try {
@@ -78,7 +106,11 @@ export default function VintedTasks() {
 
       // Validate payload based on task type
       const payload = formData.payload;
-      if (activeTaskType === 'send_message') {
+      if (activeTaskType === 'login_vinted') {
+        if (!payload.username || !payload.password) {
+          throw new Error('Missing required fields: username, password');
+        }
+      } else if (activeTaskType === 'send_message') {
         if (!payload.user_id || !payload.message) {
           throw new Error('Missing required fields: user_id, message');
         }
@@ -107,17 +139,41 @@ export default function VintedTasks() {
         throw new Error(error.detail || 'Failed to create task');
       }
 
-      setSuccess('Task created successfully!');
-      setFormData({
-        profile_id: selectedProfileId,
-        task_type: activeTaskType,
-        payload: {},
-      });
+      // For login tasks, monitor for 2FA requirement
+      if (activeTaskType === 'login_vinted') {
+        setLoginInProgress(true);
+        await new Promise((resolve) => {
+          const checkInterval = setInterval(() => {
+            const flag = sessionStorage.getItem('scalency_2fa_waiting');
+            if (flag) {
+              clearInterval(checkInterval);
+              setNeeds2FA(true);
+              resolve();
+            }
+          }, 500);
+
+          // Timeout after 30 seconds
+          setTimeout(() => {
+            clearInterval(checkInterval);
+            setLoginInProgress(false);
+            resolve();
+          }, 30000);
+        });
+      } else {
+        setSuccess('Task created successfully!');
+        setFormData({
+          profile_id: selectedProfileId,
+          task_type: activeTaskType,
+          payload: {},
+        });
+      }
 
       // Reload tasks
       setTimeout(() => loadTasks(), 500);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create task');
+      setLoginInProgress(false);
+      setNeeds2FA(false);
     } finally {
       setLoading(false);
     }
@@ -183,8 +239,9 @@ export default function VintedTasks() {
 
             <div className="mb-6">
               <label className="block text-sm font-medium mb-3">Task Type</label>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-4 gap-4">
                 {[
+                  { type: 'login_vinted', label: '🔐 Login' },
                   { type: 'send_message', label: 'Send Message' },
                   { type: 'publish_listing', label: 'Publish Listing' },
                   { type: 'bump_listing', label: 'Bump Listing' },
@@ -205,7 +262,7 @@ export default function VintedTasks() {
                         : 'border-gray-300 hover:border-gray-400'
                     }`}
                   >
-                    <p className="font-medium">{label}</p>
+                    <p className="font-medium text-sm">{label}</p>
                   </button>
                 ))}
               </div>
@@ -213,6 +270,85 @@ export default function VintedTasks() {
 
             {/* Task-specific form fields */}
             <form onSubmit={createTask} className="space-y-4">
+              {activeTaskType === 'login_vinted' && (
+                <>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                    <p className="text-sm text-blue-800">
+                      The extension will fill out the Vinted login form automatically on the login page.
+                      If 2FA is enabled, you'll be asked to enter the verification code here.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Username or Email</label>
+                    <input
+                      type="text"
+                      value={formData.payload.username || ''}
+                      onChange={(e) => handlePayloadChange('username', e.target.value)}
+                      placeholder="your@email.com or username"
+                      className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      required
+                      disabled={loginInProgress}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Password</label>
+                    <input
+                      type="password"
+                      value={formData.payload.password || ''}
+                      onChange={(e) => handlePayloadChange('password', e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      required
+                      disabled={loginInProgress}
+                    />
+                  </div>
+
+                  {/* 2FA Verification Code Input */}
+                  {needs2FA && (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                      <label className="block text-sm font-medium mb-2 text-yellow-900">
+                        2FA Verification Code
+                      </label>
+                      <p className="text-xs text-yellow-700 mb-3">
+                        A verification code has been sent to your phone. Enter it below:
+                      </p>
+                      <input
+                        type="text"
+                        value={twoFACode}
+                        onChange={(e) => {
+                          const code = e.target.value.replace(/\D/g, '').slice(0, 4);
+                          setTwoFACode(code);
+                          if (code.length === 4) {
+                            sessionStorage.setItem('scalency_2fa_code', code);
+                          }
+                        }}
+                        placeholder="0000"
+                        maxLength="4"
+                        className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 text-center text-2xl tracking-widest font-mono"
+                      />
+                      <p className="text-xs text-yellow-600 mt-2">
+                        {twoFACode.length === 4 ? '✓ Code sent to extension' : `${4 - twoFACode.length} more digits...`}
+                      </p>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={loading || loginInProgress}
+                    className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 transition"
+                  >
+                    {loading ? 'Logging in...' : loginInProgress ? 'Waiting for extension...' : 'Log In to Vinted'}
+                  </button>
+
+                  {/* Status indicator */}
+                  {loginInProgress && (
+                    <div className="p-3 bg-blue-50 border border-blue-300 rounded text-sm text-blue-700">
+                      ⏳ Extension is processing your login...
+                    </div>
+                  )}
+                </>
+              )}
+
               {activeTaskType === 'send_message' && (
                 <>
                   <div>
@@ -500,13 +636,15 @@ export default function VintedTasks() {
                 </div>
               )}
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg font-medium transition"
-              >
-                {loading ? 'Creating...' : 'Create Task'}
-              </button>
+              {activeTaskType !== 'login_vinted' && (
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg font-medium transition"
+                >
+                  {loading ? 'Creating...' : 'Create Task'}
+                </button>
+              )}
             </form>
           </div>
 
