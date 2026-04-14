@@ -988,27 +988,15 @@ async function executeLoginVinted(payload) {
     console.log('[Content] Page title:', document.title);
     console.log('[Content] Current URL:', window.location.href);
 
-    const pageText = document.textContent ? document.textContent.toLowerCase() : '';
-    console.log('[Content] Page text includes "verify":', pageText.includes('verify'));
-    console.log('[Content] Page text includes "code":', pageText.includes('code'));
+    // Check for 2FA page using Vinted's actual data-testid selectors
+    const codeInput = document.querySelector('input[data-testid="verification-code--input"]');
+    const verifyButton = document.querySelector('button[data-testid="verify-button"]');
+    const is2FAPage = codeInput !== null && verifyButton !== null;
 
-    // Check multiple detection methods
-    const check1 = pageText.includes('verify your activity');
-    const check2 = document.querySelector('input[placeholder*="code" i]') !== null;
-    const check3 = document.querySelector('input[placeholder*="digit" i]') !== null;
-    const check4 = document.querySelector('input[inputmode="numeric"]') !== null;
-    const check5 = pageText.includes('enter code');
-
-    console.log('[Content] 2FA detection checks:');
-    console.log(`  - "verify your activity" text: ${check1}`);
-    console.log(`  - Code placeholder input: ${check2}`);
-    console.log(`  - Digit placeholder input: ${check3}`);
-    console.log(`  - Numeric inputmode: ${check4}`);
-    console.log(`  - "enter code" text: ${check5}`);
-
-    const is2FAPage = check1 || check2 || check3 || check4 || check5;
-
-    console.log(`[Content] Overall 2FA detected: ${is2FAPage}`);
+    console.log('[Content] 2FA detection:');
+    console.log(`  - Code input found: ${codeInput !== null}`);
+    console.log(`  - Verify button found: ${verifyButton !== null}`);
+    console.log(`  - Overall 2FA detected: ${is2FAPage}`);
 
     if (is2FAPage) {
       console.log('[Content] 🔐 2FA VERIFICATION PAGE DETECTED!');
@@ -1085,48 +1073,14 @@ async function wait2FACode(timeoutMs = 300000) {
 }
 
 /**
- * Fill and submit 2FA verification form
+ * Fill and submit 2FA verification form using Vinted's data-testid selectors
  */
 async function fill2FAVerification(code) {
   try {
     console.log('[Content] Starting 2FA form fill with code:', code);
 
-    // Find the code input field - try multiple strategies
-    let codeInput = null;
-
-    // Strategy 1: Search by placeholder
-    codeInput = document.querySelector('input[placeholder*="code" i]') ||
-                document.querySelector('input[placeholder*="digit" i]') ||
-                document.querySelector('input[placeholder*="enter" i]');
-
-    // Strategy 2: Search by type and maxlength
-    if (!codeInput) {
-      codeInput = document.querySelector('input[type="text"][maxlength="4"]') ||
-                  document.querySelector('input[type="number"][maxlength="4"]');
-    }
-
-    // Strategy 3: Search by inputmode
-    if (!codeInput) {
-      codeInput = document.querySelector('input[inputmode="numeric"]');
-    }
-
-    // Strategy 4: Search by aria-label
-    if (!codeInput) {
-      const allInputs = document.querySelectorAll('input[type="text"], input[type="number"]');
-      for (const input of allInputs) {
-        const placeholder = input.placeholder?.toLowerCase() || '';
-        const ariaLabel = input.getAttribute('aria-label')?.toLowerCase() || '';
-        const ariaPlaceholder = input.getAttribute('aria-placeholder')?.toLowerCase() || '';
-
-        if (placeholder.includes('code') || placeholder.includes('digit') ||
-            ariaLabel.includes('code') || ariaLabel.includes('digit') ||
-            ariaPlaceholder.includes('code') || ariaPlaceholder.includes('digit')) {
-          codeInput = input;
-          break;
-        }
-      }
-    }
-
+    // Use Vinted's exact data-testid selectors
+    const codeInput = document.querySelector('input[data-testid="verification-code--input"]');
     if (!codeInput) {
       console.error('[Content] ✗ 2FA code input field not found');
       throw new Error('2FA code input field not found');
@@ -1135,52 +1089,29 @@ async function fill2FAVerification(code) {
     console.log('[Content] ✓ Found 2FA code input, filling with code...');
     codeInput.value = code;
     codeInput.focus();
-
-    // Trigger all necessary events for React/Vue to register the change
     codeInput.dispatchEvent(new Event('input', { bubbles: true }));
     codeInput.dispatchEvent(new Event('change', { bubbles: true }));
-    codeInput.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
-
     await delay(300);
 
-    // Try to check "Remember this device" checkbox
-    let rememberCheckbox = document.querySelector('input[type="checkbox"]');
-
+    // Check "Remember this device" checkbox
+    const rememberCheckbox = document.querySelector('input[data-testid="is-trusted-device--input"]');
     if (rememberCheckbox && !rememberCheckbox.checked) {
-      console.log('[Content] ✓ Checking "Remember this device" checkbox...');
+      console.log('[Content] Checking "Remember this device" checkbox...');
       rememberCheckbox.click();
       await delay(300);
     }
 
-    // Find and click Verify button - try multiple strategies
-    let verifyButton = null;
-
-    // Strategy 1: By data-testid
-    verifyButton = document.querySelector('button[data-testid*="verify" i]');
-
-    // Strategy 2: By text content
-    if (!verifyButton) {
-      const allButtons = document.querySelectorAll('button');
-      for (const btn of allButtons) {
-        const text = btn.textContent.toLowerCase();
-        if (text.includes('verify') || text.includes('confirm')) {
-          verifyButton = btn;
-          break;
-        }
-      }
-    }
-
+    // Click Verify button
+    const verifyButton = document.querySelector('button[data-testid="verify-button"]');
     if (!verifyButton) {
       console.error('[Content] ✗ Verify button not found');
       throw new Error('Verify button not found');
     }
 
-    console.log('[Content] ✓ Found verify button, clicking...');
-    verifyButton.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    await delay(200);
+    console.log('[Content] ✓ Clicking Verify button...');
     verifyButton.click();
-
     console.log('[Content] ✓ 2FA verification submitted');
+    await delay(1000);
 
   } catch (error) {
     console.error('[Content] Error during 2FA verification:', error.message);
