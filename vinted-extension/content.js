@@ -1000,13 +1000,41 @@ async function executeLoginVinted(payload) {
 
     if (is2FAPage) {
       console.log('[Content] 🔐 2FA VERIFICATION PAGE DETECTED!');
-      const verificationCode = await wait2FACode();
+      console.log('[Content] Opening 2FA helper page in new tab...');
+
+      // Open the 2FA helper page in a new tab/window
+      window.open('http://localhost:8000/api/v1/vinted/2fa', '2fa_helper', 'width=400,height=600');
+
+      // Wait for user to enter code on the helper page
+      // Poll the backend for the code (up to 5 minutes)
+      let verificationCode = null;
+      let attempts = 0;
+      const maxAttempts = 600; // 5 minutes / 0.5 seconds per attempt
+
+      while (attempts < maxAttempts && !verificationCode) {
+        attempts++;
+        await delay(500);
+
+        try {
+          console.log(`[Content] Polling backend for 2FA code (attempt ${attempts})...`);
+          const codeResponse = await fetch('http://localhost:8000/api/v1/vinted/2fa/code');
+          const codeData = await codeResponse.json();
+
+          if (codeData.found && codeData.code) {
+            verificationCode = codeData.code;
+            console.log('[Content] ✓ Retrieved verification code from backend');
+            break;
+          }
+        } catch (err) {
+          console.warn('[Content] Error polling backend for code:', err.message);
+        }
+      }
 
       if (!verificationCode) {
         throw new Error('2FA verification timed out - no code received from user');
       }
 
-      console.log('[Content] ✓ Received verification code from frontend, filling form...');
+      console.log('[Content] ✓ Filling 2FA form with verification code...');
       await fill2FAVerification(verificationCode);
 
       // Wait for 2FA to complete and redirect
