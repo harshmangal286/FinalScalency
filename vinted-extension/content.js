@@ -1042,8 +1042,8 @@ async function executeLoginVinted(payload) {
 }
 
 /**
- * Wait for user to provide 2FA verification code via sessionStorage
- * Sets a flag so frontend knows 2FA is required
+ * Wait for user to provide 2FA verification code
+ * Signals via window.postMessage and sessionStorage
  * Times out after 5 minutes
  */
 async function wait2FACode(timeoutMs = 300000) {
@@ -1051,17 +1051,37 @@ async function wait2FACode(timeoutMs = 300000) {
 
   // Signal to frontend that 2FA is required
   sessionStorage.setItem('scalency_2fa_waiting', 'true');
-  console.log('[Content] Set 2FA flag for frontend');
+  console.log('[Content] Set 2FA flag in sessionStorage');
+
+  // Also dispatch a window event for cross-origin communication
+  try {
+    window.dispatchEvent(new CustomEvent('scalency_2fa_required', {
+      detail: { waiting: true }
+    }));
+    console.log('[Content] Dispatched 2FA event to window');
+  } catch (e) {
+    console.warn('[Content] Could not dispatch event:', e.message);
+  }
 
   const startTime = Date.now();
 
   while (Date.now() - startTime < timeoutMs) {
+    // Check sessionStorage first
     const code = sessionStorage.getItem('scalency_2fa_code');
     if (code) {
-      console.log('[Content] ✓ Received 2FA code from frontend');
+      console.log('[Content] ✓ Received 2FA code from sessionStorage');
       sessionStorage.removeItem('scalency_2fa_code'); // Clean up
       sessionStorage.removeItem('scalency_2fa_waiting'); // Clean up flag
       return code;
+    }
+
+    // Check window for posted code
+    const windowCode = window.scalency_2fa_code_value;
+    if (windowCode) {
+      console.log('[Content] ✓ Received 2FA code from window property');
+      delete window.scalency_2fa_code_value;
+      sessionStorage.removeItem('scalency_2fa_waiting'); // Clean up flag
+      return windowCode;
     }
 
     await delay(500);

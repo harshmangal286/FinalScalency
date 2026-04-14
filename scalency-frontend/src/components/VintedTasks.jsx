@@ -170,23 +170,27 @@ export default function VintedTasks() {
 
         await new Promise((resolve) => {
           const checkInterval = setInterval(() => {
-            const flag = sessionStorage.getItem('scalency_2fa_waiting');
-            console.log('[VintedTasks] 2FA flag check:', flag);
-            if (flag) {
-              console.log('[VintedTasks] 2FA detected!');
+            // Check multiple storage methods (handle cross-origin issues)
+            const hasFlagSessionStorage = sessionStorage.getItem('scalency_2fa_waiting') === 'true';
+            const hasFlagLocalStorage = localStorage.getItem('scalency_2fa_waiting') === 'true';
+            const hasFlagWindow = window.scalency_2fa_waiting === 'true';
+            const hasFlag = hasFlagSessionStorage || hasFlagLocalStorage || hasFlagWindow;
+
+            if (hasFlag) {
+              console.log('[VintedTasks] ✓ 2FA flag detected!');
               clearInterval(checkInterval);
               setNeeds2FA(true);
               resolve();
             }
-          }, 200); // Check more frequently
+          }, 200); // Check frequently
 
-          // Timeout after 60 seconds (give extension time to fill login)
+          // Timeout after 180 seconds
           setTimeout(() => {
             clearInterval(checkInterval);
             console.log('[VintedTasks] 2FA monitoring timeout - login may have completed without 2FA');
             setLoginInProgress(false);
             resolve();
-          }, 60000);
+          }, 180000);
         });
       } else {
         setSuccess('Task created successfully!');
@@ -217,6 +221,23 @@ export default function VintedTasks() {
       },
     }));
   };
+
+  // Send 2FA code to extension when user enters it
+  useEffect(() => {
+    if (!needs2FA || !twoFACode || twoFACode.length !== 4) return;
+
+    console.log('[VintedTasks] ✓ Sending 2FA code to extension...');
+
+    // Send via all methods for maximum compatibility
+    try {
+      sessionStorage.setItem('scalency_2fa_code', twoFACode);
+      localStorage.setItem('scalency_2fa_code', twoFACode);
+      window.scalency_2fa_code_value = twoFACode;
+      console.log('[VintedTasks] Sent 2FA code via sessionStorage, localStorage, and window property');
+    } catch (e) {
+      console.error('[VintedTasks] Error sending 2FA code:', e.message);
+    }
+  }, [twoFACode, needs2FA]);
 
   const getStatusBadge = (status) => {
     const colors = {
