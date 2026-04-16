@@ -882,16 +882,52 @@ async function executeLoginVinted(payload) {
     // Wait for page to fully render
     await delay(1500);
 
-    // Click "Or log in with email" link to reveal the form
+    // Step 1: Click "Log in" from "Already have an account? Log in"
+    console.log('[Content] Looking for "Log in" link...');
+    let loginLink = null;
+    const allElements = document.querySelectorAll('span, a, button, div[role="button"]');
+    for (const el of allElements) {
+      const text = el.textContent.trim();
+      if (text === 'Log in' || (text.includes('Already have an account') && el.tagName.toLowerCase() === 'a')) {
+        // Check if this is the clickable "Log in" link (not just text inside another element)
+        if (el.tagName.toLowerCase() === 'a' || el.closest('button') || el.className.includes('button')) {
+          loginLink = el;
+          console.log('[Content] Found "Log in" link:', el.tagName, el.textContent.substring(0, 50));
+          break;
+        }
+      }
+    }
+
+    if (loginLink) {
+      console.log('[Content] Clicking "Log in" link...');
+      loginLink.click();
+      await delay(2000);
+    } else {
+      console.warn('[Content] "Log in" link not found, trying to find it differently...');
+      // Try finding by looking for the text "Log in" that should be clickable
+      for (const el of allElements) {
+        if (el.textContent.trim() === 'Log in') {
+          console.log('[Content] Found "Log in" text, attempting click...');
+          loginLink = el;
+          loginLink.click();
+          await delay(2000);
+          break;
+        }
+      }
+    }
+
+    // Step 2: Click "log in with email" link to reveal the form
+    console.log('[Content] Looking for "log in with email" link...');
     let emailLink = document.querySelector('[data-testid="auth-select-type--login-email"]');
 
     if (!emailLink) {
       // Try to find by text content - look for clickable element with "email"
-      const allElements = document.querySelectorAll('span, a, button, div[role="button"]');
-      for (const el of allElements) {
+      const allElements2 = document.querySelectorAll('span, a, button, div[role="button"]');
+      for (const el of allElements2) {
         const text = el.textContent.toLowerCase();
         if (text.includes('email') && text.length < 100) {
           emailLink = el;
+          console.log('[Content] Found email link:', el.textContent.substring(0, 50));
           break;
         }
       }
@@ -909,7 +945,7 @@ async function executeLoginVinted(payload) {
 
     // Verify we're on the actual login form page
     console.log('[Content] URL after email link click:', window.location.href);
-    if (currentUrl.includes('/member/signup/select_type')) {
+    if (window.location.href.includes('/member/signup/select_type')) {
       console.warn('[Content] ⚠️ Still on select_type page, waiting longer...');
       await delay(2000);
     }
@@ -1009,15 +1045,29 @@ async function executeLoginVinted(payload) {
       // Poll the backend for the code (up to 5 minutes)
       let verificationCode = null;
       let attempts = 0;
-      const maxAttempts = 600; // 5 minutes / 0.5 seconds per attempt
+      const maxAttempts = 150; // 5 minutes / 2 seconds per attempt
+      const pollIntervalMs = 2000; // Poll every 2 seconds instead of every 0.5 seconds
 
       while (attempts < maxAttempts && !verificationCode) {
         attempts++;
-        await delay(500);
+        await delay(pollIntervalMs);
 
         try {
-          console.log(`[Content] Polling backend for 2FA code (attempt ${attempts})...`);
+          console.log(`[Content] Polling backend for 2FA code (attempt ${attempts}/${maxAttempts})...`);
           const codeResponse = await fetch('http://localhost:8000/api/v1/vinted/2fa/code');
+
+          // Handle rate limiting explicitly
+          if (codeResponse.status === 429) {
+            console.warn('[Content] Backend rate limited (429), increasing poll interval...');
+            await delay(2000);
+            continue;
+          }
+
+          if (!codeResponse.ok) {
+            console.warn(`[Content] Backend error: ${codeResponse.status}`);
+            continue;
+          }
+
           const codeData = await codeResponse.json();
 
           if (codeData.found && codeData.code) {
