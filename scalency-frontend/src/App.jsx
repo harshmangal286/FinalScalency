@@ -4,7 +4,7 @@ import GeneratedListing from './components/GeneratedListing';
 import ListingsTable from './components/ListingsTable';
 import VintedTasks from './components/VintedTasks';
 import VintedAuthPopup from './components/VintedAuthPopup';
-import { publishListing, getJobStatus, createUser } from './services/api';
+import { publishListing, getJobStatus } from './services/api';
 import './styles.css';
 
 export default function App() {
@@ -18,32 +18,6 @@ export default function App() {
   const [publishLoading, setPublishLoading] = useState(false);
   const [listingsRefresh, setListingsRefresh] = useState(0);
   const [userId, setUserId] = useState(null);
-  const [userLoading, setUserLoading] = useState(true);
-
-  // Auto-create test user on mount
-  useEffect(() => {
-    const initializeTestUser = async () => {
-      try {
-        // Create a test user with a timestamp to avoid duplicates
-        const timestamp = new Date().getTime();
-        const testEmail = `testuser-${timestamp}@example.com`;
-        const testPassword = 'testpassword123';
-
-        console.log('Creating test user with email:', testEmail);
-        const user = await createUser(testEmail, testPassword);
-        setUserId(user.id);
-        console.log('Test user created with ID:', user.id);
-        setError(null);
-      } catch (err) {
-        console.error('Failed to create test user:', err.message);
-        setError(`Failed to initialize test user: ${err.message}`);
-      } finally {
-        setUserLoading(false);
-      }
-    };
-
-    initializeTestUser();
-  }, []);
 
   // Poll job status every 2 seconds
   useEffect(() => {
@@ -154,15 +128,9 @@ export default function App() {
       {currentView === 'listings' ? (
         <div className="main-content">
           <div className="left-panel">
-            {userLoading ? (
-              <div className="card">
-                <p style={{ textAlign: 'center', padding: '20px' }}>
-                  Initializing test user... Please wait.
-                </p>
-              </div>
-            ) : !userId ? (
-              <div className="card error-message" style={{ padding: '20px', textAlign: 'center' }}>
-                <p>Failed to initialize test user. Please refresh the page.</p>
+            {!userId ? (
+              <div className="card info-message" style={{ padding: '20px', textAlign: 'center' }}>
+                <p>Please authenticate via Vinted to begin.</p>
               </div>
             ) : (
               <>
